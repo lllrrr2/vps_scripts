@@ -50,7 +50,7 @@ fi
 
 if [ "$(uname -s)" = "Linux" ]; then
     real_temp="${TEST_ROOT}/real-temp"
-    temp_link="/tmp/vps-common-link.$$"
+    temp_link="${TEST_ROOT}/vps-common-link"
     mkdir -p "${real_temp}"
     printf '%s\n' "keep" > "${real_temp}/sentinel"
     ln -s "${real_temp}" "${temp_link}"
@@ -64,7 +64,17 @@ if [ "$(uname -s)" = "Linux" ]; then
     rm -f -- "${temp_link}"
 fi
 
-safe_temp="/tmp/vps-common-clean.$$"
+if ask_yes_no "continue" < /dev/null; then
+    echo "ask_yes_no accepted stdin EOF." >&2
+    exit 1
+fi
+
+if read_input "input" "" < /dev/null; then
+    echo "read_input accepted stdin EOF." >&2
+    exit 1
+fi
+
+safe_temp="${TEST_ROOT}/vps-common-clean"
 mkdir -p "${safe_temp}"
 printf '%s\n' "remove" > "${safe_temp}/file"
 cleanup_temp_files "${safe_temp}"

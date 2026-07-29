@@ -1,9 +1,10 @@
 #!/bin/bash
+set -euo pipefail
 
 #==============================================================================
 # 脚本名称: network_quality_test.sh
 # 描述: VPS综合网络质量测试脚本 - 包含延迟、丢包、端口、连通性等全面测试
-# 作者: Jensfrank
+# 作者: everettlabs
 # 路径: vps_scripts/scripts/network_test/network_quality_test.sh
 # 使用方法: bash network_quality_test.sh [选项]
 # 选项: --basic (基础测试) --full (完整测试) --port (端口扫描)
@@ -25,7 +26,7 @@ LOG_DIR="/var/log/vps_scripts"
 LOG_FILE="$LOG_DIR/network_quality_$(date +%Y%m%d_%H%M%S).log"
 REPORT_DIR="/var/log/vps_scripts/reports"
 REPORT_FILE="$REPORT_DIR/network_quality_$(date +%Y%m%d_%H%M%S).txt"
-TEMP_DIR="/tmp/network_quality_$$"
+TEMP_DIR=$(mktemp -d "/tmp/network_quality.XXXXXX") || { echo "Failed to create temp dir"; exit 1; }
 
 # 测试模式
 BASIC_MODE=false
@@ -74,12 +75,11 @@ COMMON_PORTS[vnc]="5900:VNC"
 create_directories() {
     [ ! -d "$LOG_DIR" ] && mkdir -p "$LOG_DIR"
     [ ! -d "$REPORT_DIR" ] && mkdir -p "$REPORT_DIR"
-    [ ! -d "$TEMP_DIR" ] && mkdir -p "$TEMP_DIR"
 }
 
 # 清理临时文件
 cleanup() {
-    [ -d "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"
+    [ -d "${TEMP_DIR:-}" ] && rm -rf -- "$TEMP_DIR"
 }
 
 trap cleanup EXIT

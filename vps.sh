@@ -9,12 +9,12 @@ set -u
 
 GITHUB_RAW_URL="https://raw.githubusercontent.com/everett7623/vps_scripts/main"
 PROJECT_URL="https://github.com/everett7623/vps_scripts"
-PROJECT_VERSION="1.0.0"
-PROJECT_AUTHOR="Jensfrank"
+PROJECT_VERSION="1.1.1"
+PROJECT_AUTHOR="everettlabs"
 COMMUNITY_URL="https://nodeloc.com"
 VPS_RECOMMEND_URL="https://vpsknow.com"
 BLOG_URL="https://seedloc.com"
-LAUNCHER_STYLE_VERSION="1.0.0"
+LAUNCHER_STYLE_VERSION="1.1.0"
 LOCAL_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" 2>/dev/null && pwd || printf '')"
 DOWNLOAD_CONNECT_TIMEOUT="${VPS_DOWNLOAD_CONNECT_TIMEOUT:-6}"
 DOWNLOAD_MAX_TIME="${VPS_DOWNLOAD_MAX_TIME:-60}"
@@ -445,6 +445,57 @@ install_vps_command() {
     esac
 }
 
+is_managed_vps_command() {
+    [ -f "${INSTALL_COMMAND}" ] &&
+        grep -Fq "exec bash \"${INSTALL_LAUNCHER}\" \"\$@\"" "${INSTALL_COMMAND}"
+}
+
+auto_install_vps_command() {
+    local policy="${VPS_AUTO_INSTALL_COMMAND:-auto}"
+
+    case "${policy}" in
+        false|no|off|0)
+            return 0
+            ;;
+        auto)
+            if [ ! -t 0 ] || [ ! -t 1 ]; then
+                return 0
+            fi
+            ;;
+        true|yes|on|1)
+            ;;
+        *)
+            echo -e "${YELLOW}[提示] 忽略无效的 VPS_AUTO_INSTALL_COMMAND：${policy}${RESET}"
+            return 0
+            ;;
+    esac
+
+    if [ -x "${INSTALL_COMMAND}" ] && [ -x "${INSTALL_LAUNCHER}" ]; then
+        return 0
+    fi
+
+    if [ -e "${INSTALL_COMMAND}" ] && ! is_managed_vps_command; then
+        echo -e "${YELLOW}[提示] ${INSTALL_COMMAND} 已存在且不属于本项目，未自动覆盖。${RESET}"
+        echo -e "${DIM}如确认可以替换，请手动执行：sudo bash vps.sh --install${RESET}"
+        return 0
+    fi
+
+    if [ -z "${VPS_INSTALL_PREFIX:-}" ] && [ "${EUID}" -ne 0 ]; then
+        echo -e "${YELLOW}[提示] 尚未安装 vps 快捷命令；自动安装需要 root 权限。${RESET}"
+        echo -e "${DIM}请执行：sudo bash vps.sh --install${RESET}"
+        return 0
+    fi
+
+    echo -e "${CYAN}[信息] 首次运行，正在自动创建 vps 快捷命令...${RESET}"
+    if [ -z "${VPS_INSTALL_SOURCE_OVERRIDE:-}" ] && [ -f "${BASH_SOURCE[0]}" ]; then
+        if ! VPS_INSTALL_SOURCE_OVERRIDE="${BASH_SOURCE[0]}" install_vps_command; then
+            echo -e "${YELLOW}[提示] 自动创建失败，当前启动器仍可继续使用。${RESET}"
+        fi
+    elif ! install_vps_command; then
+        echo -e "${YELLOW}[提示] 自动创建失败，当前启动器仍可继续使用。${RESET}"
+    fi
+}
+
 uninstall_vps_command() {
     require_install_permission || return 1
 
@@ -529,6 +580,9 @@ run_repo_script() {
 run_remote_script_url() {
     local url="${1}"
     local label="${2}"
+    shift 2
+    local -a script_args=("$@")
+    local temp_root=""
     local temp_file=""
 
     print_header
@@ -543,39 +597,44 @@ run_remote_script_url() {
         return 0
     fi
 
-    temp_file=$(mktemp "/tmp/vps_remote_script.XXXXXX") || {
-        echo -e "${RED}[错误] 创建临时文件失败。${RESET}"
+    temp_root=$(mktemp -d "/tmp/vps_remote_script.XXXXXX") || {
+        echo -e "${RED}[错误] 创建临时目录失败。${RESET}"
         pause_for_menu
         return 1
     }
+    temp_file="${temp_root}/script.sh"
 
     if ! download_file_with_tool "${url}" "${temp_file}" || [ ! -s "${temp_file}" ]; then
-        rm -f "${temp_file}"
+        rm -rf -- "${temp_root}"
         echo -e "${RED}[错误] 下载第三方脚本失败。${RESET}"
         pause_for_menu
         return 1
     fi
 
     if ! bash -n "${temp_file}" 2>/dev/null; then
-        rm -f "${temp_file}"
+        rm -rf -- "${temp_root}"
         echo -e "${RED}[错误] 下载内容语法检查未通过，已拒绝执行。${RESET}"
         pause_for_menu
         return 1
     fi
 
     chmod +x "${temp_file}" 2>/dev/null || true
-    if ! bash "${temp_file}"; then
+    local exit_code=0
+    (cd "${temp_root}" && bash "${temp_file}" "${script_args[@]}") || exit_code=$?
+    if [ "${exit_code}" -ne 0 ]; then
         echo ""
         echo -e "${RED}[错误] 第三方脚本执行失败。${RESET}"
     fi
 
-    rm -f "${temp_file}"
+    rm -rf -- "${temp_root}"
     pause_for_menu
+    return "${exit_code}"
 }
 
 run_remote_command() {
     local command_to_run="${1}"
     local description="${2:-third-party command}"
+    local temp_root=""
     local temp_file=""
 
     print_header
@@ -590,11 +649,12 @@ run_remote_command() {
         return 0
     fi
 
-    temp_file=$(mktemp "/tmp/vps_remote_command.XXXXXX") || {
-        echo -e "${RED}[错误] 创建临时命令文件失败。${RESET}"
+    temp_root=$(mktemp -d "/tmp/vps_remote_command.XXXXXX") || {
+        echo -e "${RED}[错误] 创建临时命令目录失败。${RESET}"
         pause_for_menu
         return 1
     }
+    temp_file="${temp_root}/command.sh"
 
     {
         printf '%s\n' '#!/bin/bash'
@@ -603,19 +663,22 @@ run_remote_command() {
     } > "${temp_file}"
 
     if ! bash -n "${temp_file}" 2>/dev/null; then
-        rm -f "${temp_file}"
+        rm -rf -- "${temp_root}"
         echo -e "${RED}[错误] 命令脚本语法检查未通过，已拒绝执行。${RESET}"
         pause_for_menu
         return 1
     fi
 
-    if ! bash "${temp_file}"; then
+    local exit_code=0
+    (cd "${temp_root}" && bash "${temp_file}") || exit_code=$?
+    if [ "${exit_code}" -ne 0 ]; then
         echo ""
         echo -e "${RED}[错误] 第三方命令执行失败。${RESET}"
     fi
 
-    rm -f "${temp_file}"
+    rm -rf -- "${temp_root}"
     pause_for_menu
+    return "${exit_code}"
 }
 
 system_tools_menu() {
@@ -733,9 +796,11 @@ service_install_menu() {
         print_menu_item 19 "Jenkins" "自动化服务"
         print_menu_item 20 "Kubernetes" "集群环境"
         print_menu_item 21 "WP Panel" "WordPress 面板"
+        print_menu_item 22 "Caddy" "自动 HTTPS 服务器"
+        print_menu_item 23 "Portainer" "Docker 可视化面板"
         print_menu_item 0  "返回"
         echo ""
-        read_menu_choice "请选择 [0-21]: " || return 0
+        read_menu_choice "请选择 [0-23]: " || return 0
         choice="${MENU_CHOICE}"
 
         case "${choice}" in
@@ -759,7 +824,9 @@ service_install_menu() {
             18) run_repo_script "scripts/service_install/cyberpanel.sh" ;;
             19) run_repo_script "scripts/service_install/jenkins.sh" ;;
             20) run_repo_script "scripts/service_install/kubernetes.sh" ;;
-            21) run_remote_command "apt-get update && apt-get install -y wget ca-certificates && wget -qO- https://raw.githubusercontent.com/naibabiji/wp-panel/main/install.sh | bash" "WP Panel installer" ;;
+            21) run_repo_script "scripts/service_install/wppanel.sh" ;;
+            22) run_remote_command "arch=\$(uname -m); case \"\${arch}\" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; *) echo \"Unsupported architecture: \${arch}\" >&2; exit 1 ;; esac; curl -fsSL \"https://caddyserver.com/api/download?os=linux&arch=\${arch}\" -o /usr/bin/caddy && chmod +x /usr/bin/caddy && /usr/bin/caddy version" "Caddy web server" ;;
+            23) run_remote_command "docker volume create portainer_data && docker run -d -p 9443:9443 --name portainer --restart=always -v /var/run/docker.sock:/var/run/docker.sock -v portainer_data:/data portainer/portainer-ce:latest" "Portainer CE" ;;
             0) return ;;
             *) invalid_choice ;;
         esac
@@ -772,39 +839,49 @@ community_menu() {
         print_status_line
         print_panel_title "社区脚本"
         print_menu_item 1  "YABS 性能测试" "综合基准脚本"
-        print_menu_item 2  "XY-IP 质量检测" "IP 综合检查"
-        print_menu_item 3  "XY 网络质量检测" "路由与质量"
-        print_menu_item 4  "NodeLoc 综合测试" "多项目测试脚本"
-        print_menu_item 5  "spiritLHLS ecs" "综合性能测试"
-        print_menu_item 6  "流媒体解锁测试" "流媒体服务检测"
-        print_menu_item 7  "响应时间测试" "curl 请求耗时"
-        print_menu_item 8  "SSH 工具" "远程访问辅助"
-        print_menu_item 9  "JCNF 工具箱" "社区综合工具箱"
-        print_menu_item 10 "科技 Lion 工具箱" "社区综合工具箱"
-        print_menu_item 11 "BlueSkyXN 工具箱" "社区综合工具箱"
-        print_menu_item 12 "多线路测速" "多节点网络测速"
-        print_menu_item 13 "AutoTrace" "路由追踪工具"
-        print_menu_item 14 "超售检测" "内存压力测试"
+        print_menu_item 2  "Bench.sh 快速测试" "经典快速基准"
+        print_menu_item 3  "XY-IP 质量检测" "IP 风险与黑名单"
+        print_menu_item 4  "XY 网络质量检测" "路由与延迟"
+        print_menu_item 5  "XY 硬件质量体检" "CPU/IO 性能评估"
+        print_menu_item 6  "NextTrace 回程路由" "可视化路由追踪"
+        print_menu_item 7  "NodeLoc 综合测试" "多项目测试脚本"
+        print_menu_item 8  "Nodequality" "节点质量评分"
+        print_menu_item 9  "spiritLHLS ecs" "综合性能测试"
+        print_menu_item 10 "流媒体解锁测试" "流媒体服务检测"
+        print_menu_item 11 "响应时间测试" "curl 请求耗时"
+        print_menu_item 12 "SSH 工具" "远程访问辅助"
+        print_menu_item 13 "JCNF 工具箱" "社区综合工具箱"
+        print_menu_item 14 "科技 Lion 工具箱" "社区综合工具箱"
+        print_menu_item 15 "BlueSkyXN 工具箱" "社区综合工具箱"
+        print_menu_item 16 "多线路测速" "多节点网络测速"
+        print_menu_item 17 "AutoTrace" "路由追踪工具"
+        print_menu_item 18 "超售检测" "内存压力测试"
+        print_menu_item 19 "NodeScriptKit" "NodeSeek 测试工具"
         print_menu_item 0  "返回"
         echo ""
-        read_menu_choice "请选择 [0-14]: " || return 0
+        read_menu_choice "请选择 [0-19]: " || return 0
         choice="${MENU_CHOICE}"
 
         case "${choice}" in
             1) run_remote_script_url "https://raw.githubusercontent.com/masonr/yet-another-bench-script/master/yabs.sh" "YABS benchmark" ;;
-            2) run_remote_script_url "https://IP.Check.Place" "XY-IP quality" ;;
-            3) run_remote_script_url "https://Net.Check.Place" "XY network quality" ;;
-            4) run_remote_command "curl -sSL https://abc.sd | bash" "NodeLoc benchmark" ;;
-            5) run_remote_script_url "https://gitlab.com/spiritysdx/za/-/raw/main/ecs.sh" "spiritLHLS ecs" ;;
-            6) run_remote_script_url "https://media.ispvps.com" "Media unlock test" ;;
-            7) run_remote_script_url "https://nodebench.mereith.com/scripts/curltime.sh" "Response time test" ;;
-            8) run_remote_command "curl -fsSL https://raw.githubusercontent.com/eooce/ssh_tool/main/ssh_tool.sh -o ssh_tool.sh && chmod +x ssh_tool.sh && ./ssh_tool.sh" "SSH tool" ;;
-            9) run_remote_command "wget -O jcnfbox.sh https://raw.githubusercontent.com/Netflixxp/jcnf-box/main/jcnfbox.sh && chmod +x jcnfbox.sh && clear && ./jcnfbox.sh" "JCNF toolbox" ;;
-            10) run_remote_script_url "https://kejilion.sh" "KejiLion toolbox" ;;
-            11) run_remote_command "wget -O box.sh https://raw.githubusercontent.com/BlueSkyXN/SKY-BOX/main/box.sh && chmod +x box.sh && clear && ./box.sh" "BlueSkyXN toolbox" ;;
-            12) run_remote_script_url "https://raw.githubusercontent.com/i-abc/Speedtest/main/speedtest.sh" "Multi-line speedtest" ;;
-            13) run_remote_command "wget -N --no-check-certificate https://raw.githubusercontent.com/Chennhaoo/Shell_Bash/master/AutoTrace.sh && chmod +x AutoTrace.sh && bash AutoTrace.sh" "AutoTrace" ;;
-            14) run_remote_command "wget --no-check-certificate -O memoryCheck.sh https://raw.githubusercontent.com/uselibrary/memoryCheck/main/memoryCheck.sh && chmod +x memoryCheck.sh && bash memoryCheck.sh" "Oversell check" ;;
+            2) run_remote_script_url "https://bench.sh" "Bench.sh quick benchmark" ;;
+            3) run_remote_script_url "https://Check.Place" "XY IP quality check" "-I" ;;
+            4) run_remote_script_url "https://Check.Place" "XY network quality check" "-N" ;;
+            5) run_remote_script_url "https://Check.Place" "XY hardware check" "-H" ;;
+            6) run_remote_script_url "https://raw.githubusercontent.com/sjlleo/nexttrace/main/nt_install.sh" "NextTrace installer" ;;
+            7) run_remote_script_url "https://abc.sd" "NodeLoc benchmark" ;;
+            8) run_remote_script_url "https://run.NodeQuality.com" "Nodequality test" ;;
+            9) run_remote_script_url "https://gitlab.com/spiritysdx/za/-/raw/main/ecs.sh" "spiritLHLS ecs" ;;
+            10) run_remote_script_url "https://media.ispvps.com" "Media unlock test" ;;
+            11) run_remote_script_url "https://nodebench.mereith.com/scripts/curltime.sh" "Response time test" ;;
+            12) run_remote_script_url "https://raw.githubusercontent.com/eooce/ssh_tool/main/ssh_tool.sh" "SSH tool" ;;
+            13) run_remote_script_url "https://raw.githubusercontent.com/Netflixxp/jcnf-box/main/jcnfbox.sh" "JCNF toolbox" ;;
+            14) run_remote_script_url "https://kejilion.sh" "KejiLion toolbox" ;;
+            15) run_remote_script_url "https://raw.githubusercontent.com/BlueSkyXN/SKY-BOX/main/box.sh" "BlueSkyXN toolbox" ;;
+            16) run_remote_script_url "https://raw.githubusercontent.com/i-abc/Speedtest/main/speedtest.sh" "Multi-line speedtest" ;;
+            17) run_remote_script_url "https://raw.githubusercontent.com/Chennhaoo/Shell_Bash/master/AutoTrace.sh" "AutoTrace" ;;
+            18) run_remote_script_url "https://raw.githubusercontent.com/uselibrary/memoryCheck/main/memoryCheck.sh" "Oversell check" ;;
+            19) run_remote_script_url "https://sh.nodeseek.com" "NodeScriptKit" ;;
             0) return ;;
             *) invalid_choice ;;
         esac
@@ -833,7 +910,7 @@ proxy_tools_menu() {
             3) run_remote_script_url "https://gitlab.com/rwkgyg/x-ui-yg/raw/main/install.sh" "yonggekkk x-ui" ;;
             4) run_remote_script_url "https://raw.githubusercontent.com/mhsanaei/3x-ui/master/install.sh" "Official 3x-ui" ;;
             5) run_remote_script_url "https://raw.githubusercontent.com/xeefei/3x-ui/master/install.sh" "xeefei 3x-ui" ;;
-            6) run_remote_script_url "https://raw.githubusercontent.com/everett7623/hy2/main/install.sh" "Hysteria2 installer" ;;
+            6) run_remote_script_url "https://raw.githubusercontent.com/everett7623/hy2/main/hy2.sh" "Hysteria2 installer" ;;
             0) return ;;
             *) invalid_choice ;;
         esac
@@ -848,19 +925,43 @@ other_tools_menu() {
         print_menu_item 1 "BBR" "网络加速"
         print_menu_item 2 "Fail2ban" "基础安全防护"
         print_menu_item 3 "哪吒探针" "服务器监控"
-        print_menu_item 4 "Swap" "虚拟内存管理"
-        print_menu_item 5 "哪吒清理工具" "第三方清理脚本"
+        print_menu_item 4 "Komari 探针" "轻量级监控"
+        print_menu_item 5 "Swap" "虚拟内存管理"
+        print_menu_item 6 "哪吒清理工具" "第三方清理脚本"
+        print_menu_item 7 "WARP 一键脚本" "Cloudflare IPv6"
+        print_menu_item 8 "DD 系统重装" "一键重装系统"
+        print_menu_item 9 "acme.sh 证书" "免费 SSL 证书"
+        print_menu_item 10 "tmux 终端复用" "防断连必备"
+        print_menu_item 11 "oh-my-zsh" "Shell 增强"
+        print_menu_item 12 "Uptime Kuma" "自托管监控"
+        print_menu_item 13 "Tailscale" "WireGuard 组网"
+        print_menu_item 14 "FRP 内网穿透" "反向代理穿透"
+        print_menu_item 15 "Cloudflare Tunnel" "零IP暴露隧道"
+        print_menu_item 16 "FileBrowser" "Web 文件管理"
+        print_menu_item 17 "现代 CLI 工具包" "btop、rg、fd、fzf、restic"
         print_menu_item 0 "返回"
         echo ""
-        read_menu_choice "请选择 [0-5]: " || return 0
+        read_menu_choice "请选择 [0-17]: " || return 0
         choice="${MENU_CHOICE}"
 
         case "${choice}" in
             1) run_repo_script "scripts/other_tools/bbr.sh" ;;
             2) run_repo_script "scripts/other_tools/fail2ban.sh" ;;
             3) run_repo_script "scripts/other_tools/nezha.sh" ;;
-            4) run_repo_script "scripts/other_tools/swap.sh" ;;
-            5) run_remote_script_url "https://raw.githubusercontent.com/everett7623/Nezha-cleaner/main/nezha-agent-cleaner.sh" "Nezha cleaner" ;;
+            4) run_remote_script_url "https://raw.githubusercontent.com/komari-monitor/komari/main/install-komari.sh" "Komari monitor" ;;
+            5) run_repo_script "scripts/other_tools/swap.sh" ;;
+            6) run_remote_script_url "https://raw.githubusercontent.com/everett7623/Nezha-cleaner/main/nezha-agent-cleaner.sh" "Nezha cleaner" ;;
+            7) run_remote_script_url "https://gitlab.com/fscarmen/warp/-/raw/main/menu.sh" "Cloudflare WARP" ;;
+            8) run_remote_script_url "https://raw.githubusercontent.com/leitbogioro/Tools/master/Linux_reinstall/InstallNET.sh" "DD system reinstall" ;;
+            9) run_remote_script_url "https://get.acme.sh" "acme.sh SSL certificate tool" ;;
+            10) run_remote_command "apt-get install -y tmux || yum install -y tmux || apk add tmux" "tmux terminal multiplexer" ;;
+            11) run_remote_script_url "https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh" "oh-my-zsh" "--unattended" ;;
+            12) run_remote_command "docker run -d --restart=always -p 3001:3001 -v uptime-kuma:/app/data --name uptime-kuma louislam/uptime-kuma:1" "Uptime Kuma monitor" ;;
+            13) run_remote_script_url "https://tailscale.com/install.sh" "Tailscale mesh VPN" ;;
+            14) run_remote_script_url "https://raw.githubusercontent.com/funnyzak/frpc/main/frpc_linux_install.sh" "FRP client (frpc)" ;;
+            15) run_remote_command "arch=\$(uname -m); case \"\${arch}\" in x86_64) arch=amd64 ;; aarch64|arm64) arch=arm64 ;; armv7l) arch=arm ;; *) echo \"Unsupported architecture: \${arch}\" >&2; exit 1 ;; esac; curl -fsSL \"https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-\${arch}\" -o /usr/local/bin/cloudflared && chmod +x /usr/local/bin/cloudflared && /usr/local/bin/cloudflared --version" "Cloudflare Tunnel (cloudflared)" ;;
+            16) run_remote_script_url "https://raw.githubusercontent.com/filebrowser/get/master/get.sh" "FileBrowser file manager" ;;
+            17) run_repo_script "scripts/other_tools/modern_cli.sh" ;;
             0) return ;;
             *) invalid_choice ;;
         esac
@@ -873,7 +974,9 @@ update_info_menu() {
     echo -e "${WHITE}启动器会在运行时获取最新的官方模块。${RESET}"
     echo -e "${DIM}如需刷新主界面，可重新运行以下命令：${RESET}"
     echo ""
-    echo -e "${CYAN}bash <(curl -fsSL ${GITHUB_RAW_URL}/vps.sh)${RESET}"
+    echo -e "${CYAN}tmp_script=\$(mktemp /tmp/vps.XXXXXX) || exit 1${RESET}"
+    echo -e "${CYAN}curl -fsSL ${GITHUB_RAW_URL}/vps.sh -o \"\$tmp_script\" && bash \"\$tmp_script\"${RESET}"
+    echo -e "${CYAN}rm -f \"\$tmp_script\"${RESET}"
     pause_for_menu
 }
 
@@ -927,6 +1030,7 @@ uninstall_menu() {
 
 main_menu() {
     check_environment
+    auto_install_vps_command
 
     while true; do
         print_header

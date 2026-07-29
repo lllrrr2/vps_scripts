@@ -1,9 +1,10 @@
 #!/bin/bash
+set -euo pipefail
 #==============================================================================
 # 脚本名称: btpanel.sh
 # 脚本描述: BT宝塔面板官方安装脚本 - 基于官方脚本的增强版
 # 脚本路径: vps_scripts/scripts/service_install/btpanel.sh
-# 作者: Jensfrank
+# 作者: everettlabs
 # 使用方法: bash btpanel.sh [选项]
 # 选项说明:
 #   --version <版本>     面板版本 (stable/beta)
@@ -116,18 +117,19 @@ install_btpanel() {
     log "${CYAN}开始安装宝塔面板...${NC}"
     
     # 下载官方安装脚本
-    wget -O install.sh "$INSTALL_SCRIPT"
-    
-    if [[ ! -f install.sh ]]; then
+    local install_script
+    install_script=$(mktemp "/tmp/btpanel_install.XXXXXX") || { log "${RED}创建临时文件失败${NC}"; exit 1; }
+    if ! wget -O "$install_script" "$INSTALL_SCRIPT"; then
         log "${RED}错误: 下载安装脚本失败${NC}"
+        rm -f -- "$install_script"
         exit 1
     fi
     
     # 执行安装
-    echo y | bash install.sh
+    echo y | bash "$install_script" || true
     
     # 清理
-    rm -f install.sh
+    rm -f -- "$install_script"
 }
 
 # 配置面板
@@ -171,9 +173,10 @@ install_lnmp_env() {
     
     log "${CYAN}安装LNMP环境...${NC}"
     
-    # 创建自动安装脚本
-    cat > /tmp/install_lnmp.sh << 'EOF'
+    # 执行自动安装步骤
+    bash <<'EOF'
 #!/bin/bash
+set -euo pipefail
 echo "正在安装LNMP环境..."
 
 # 安装Nginx
@@ -187,10 +190,6 @@ echo "4" | bt 1
 
 echo "LNMP环境安装完成"
 EOF
-    
-    chmod +x /tmp/install_lnmp.sh
-    /tmp/install_lnmp.sh
-    rm -f /tmp/install_lnmp.sh
 }
 
 # 安装LAMP
@@ -201,9 +200,10 @@ install_lamp_env() {
     
     log "${CYAN}安装LAMP环境...${NC}"
     
-    # 创建自动安装脚本
-    cat > /tmp/install_lamp.sh << 'EOF'
+    # 执行自动安装步骤
+    bash <<'EOF'
 #!/bin/bash
+set -euo pipefail
 echo "正在安装LAMP环境..."
 
 # 安装Apache
@@ -217,10 +217,6 @@ echo "4" | bt 1
 
 echo "LAMP环境安装完成"
 EOF
-    
-    chmod +x /tmp/install_lamp.sh
-    /tmp/install_lamp.sh
-    rm -f /tmp/install_lamp.sh
 }
 
 # 安装Docker

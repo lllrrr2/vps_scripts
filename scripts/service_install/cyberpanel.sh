@@ -1,9 +1,10 @@
 #!/bin/bash
+set -euo pipefail
 #==============================================================================
 # 脚本名称: cyberpanel.sh
 # 脚本描述: Cyberpanel面板安装脚本 - 提供交互式和半自动化安装Cyberpanel
 # 脚本路径: vps_scripts/scripts/service_install/cyberpanel.sh
-# 作者: Jensfrank
+# 作者: everettlabs
 # 使用方法: bash cyberpanel.sh [选项]
 # 选项: --check (仅检查系统要求)
 #       --prepare (安装前准备，包括依赖和优化)
@@ -50,7 +51,7 @@ show_banner() {
     echo "=================================================="
     echo -e "${PURPLE}    Cyberpanel 面板安装助手${NC}"
     echo "=================================================="
-    echo "    作者: Jensfrank"
+    echo "    作者: everettlabs"
     echo "    版本: 1.0"
     echo "    更新: 2025-01-23"
     echo "=================================================="
@@ -237,6 +238,14 @@ prepare_system() {
     echo -e "${CYAN}系统准备和优化${NC}"
     echo "=================================================="
     
+    # 确保检测到包管理器
+    if [[ -z "${PKG_MANAGER:-}" ]]; then
+        if ! check_system; then
+            log_error "系统检查未通过"
+            exit 1
+        fi
+    fi
+    
     # 更新系统
     log_info "更新系统软件包..."
     if [[ "$PKG_MANAGER" == "apt" ]]; then
@@ -285,7 +294,9 @@ EOF
     log_success "系统参数优化完成"
     
     # 创建swap（如果内存小于2GB）
-    if [[ $TOTAL_MEM -lt 2048 ]]; then
+    local total_mem_mb
+    total_mem_mb=$(free -m | awk '/^Mem:/{print $2}')
+    if [[ $total_mem_mb -lt 2048 ]]; then
         if ! swapon -s | grep -q swapfile; then
             log_info "创建2GB Swap文件..."
             dd if=/dev/zero of=/swapfile bs=1M count=2048 >/dev/null 2>&1
@@ -357,11 +368,14 @@ install_wizard() {
     fi
     
     # 记录安装选项
-    cat > /tmp/cyberpanel_install_options.txt << EOF
+    local options_file
+    options_file=$(mktemp "/tmp/cyberpanel-options.XXXXXX") || { log_error "创建安装选项记录失败"; exit 1; }
+    cat > "$options_file" << EOF
 版本选择: $version_choice
 完整服务: $full_service
 安装时间: $(date)
 EOF
+    log_info "安装选项已记录: $options_file"
     
     # 执行安装
     log_info "开始下载并执行Cyberpanel官方安装脚本..."
@@ -375,7 +389,20 @@ EOF
     echo ""
     
     # 执行官方安装脚本
-    sh <(curl -s "$CYBERPANEL_URL" || wget -q -O - "$CYBERPANEL_URL")
+    local install_script
+    install_script=$(mktemp "/tmp/cyberpanel_install.XXXXXX") || { log_error "创建临时文件失败"; exit 1; }
+    if curl -fsSL "$CYBERPANEL_URL" -o "$install_script" || wget -q -O "$install_script" "$CYBERPANEL_URL"; then
+        if ! sh "$install_script"; then
+            log_error "Cyberpanel官方安装脚本执行失败"
+            rm -f -- "$install_script"
+            exit 1
+        fi
+    else
+        log_error "下载安装脚本失败"
+        rm -f -- "$install_script"
+        exit 1
+    fi
+    rm -f -- "$install_script"
     
     # 安装后处理
     if [[ -d "$INSTALL_DIR" ]]; then
@@ -439,10 +466,10 @@ configure_firewall() {
     # 检查并配置firewalld
     if command -v firewall-cmd &> /dev/null && systemctl is-active firewalld &>/dev/null; then
         for port in "${TCP_PORTS[@]}"; do
-            firewall-cmd --permanent --add-port=$port/tcp &>/dev/null
+            firewall-cmd --permanent --add-port="$port/tcp" &>/dev/null || true
         done
         for port in "${UDP_PORTS[@]}"; do
-            firewall-cmd --permanent --add-port=$port/udp &>/dev/null
+            firewall-cmd --permanent --add-port="$port/udp" &>/dev/null || true
         done
         firewall-cmd --reload
         log_success "firewalld防火墙规则已配置"
@@ -451,10 +478,10 @@ configure_firewall() {
     # 检查并配置ufw
     if command -v ufw &> /dev/null && ufw status | grep -q "Status: active"; then
         for port in "${TCP_PORTS[@]}"; do
-            ufw allow $port/tcp &>/dev/null
+            ufw allow "$port/tcp" &>/dev/null || true
         done
         for port in "${UDP_PORTS[@]}"; do
-            ufw allow $port/udp &>/dev/null
+            ufw allow "$port/udp" &>/dev/null || true
         done
         log_success "ufw防火墙规则已配置"
     fi
@@ -601,8 +628,8 @@ uninstall_cyberpanel() {
     # 停止所有服务
     services=(lscpd lsws mysql mariadb postfix pure-ftpd pdns)
     for service in "${services[@]}"; do
-        systemctl stop $service 2>/dev/null
-        systemctl disable $service 2>/dev/null
+        systemctl stop "$service" 2>/dev/null || true
+        systemctl disable "$service" 2>/dev/null || true
     done
     
     # 删除文件和目录

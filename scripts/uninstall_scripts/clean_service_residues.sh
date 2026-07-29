@@ -1,4 +1,5 @@
 #!/bin/bash
+set -euo pipefail
 #/vps_scripts/scripts/uninstall_scripts/clean_service_residues.sh - VPS Scripts 服务残留清理工具
 
 # 定义颜色
@@ -75,12 +76,12 @@ case "$choice" in
         fi
         
         # 删除残留文件
-        rm -rf /www/server/panel
-        rm -rf /www/wwwroot/default
-        rm -rf /www/server/nginx
-        rm -rf /www/server/mysql
-        rm -rf /www/server/php
-        rm -rf /www/server/apache
+        rm -rf -- /www/server/panel
+        rm -rf -- /www/wwwroot/default
+        rm -rf -- /www/server/nginx
+        rm -rf -- /www/server/mysql
+        rm -rf -- /www/server/php
+        rm -rf -- /www/server/apache
         
         echo -e "${GREEN}宝塔面板清理完成${NC}"
         ;;
@@ -98,11 +99,11 @@ case "$choice" in
         fi
         
         # 删除服务文件
-        rm -f /etc/systemd/system/1panel.service
+        rm -f -- /etc/systemd/system/1panel.service
         systemctl daemon-reload &> /dev/null
         
         # 删除安装目录
-        rm -rf /opt/1panel
+        rm -rf -- /opt/1panel
         
         echo -e "${GREEN}1Panel面板清理完成${NC}"
         ;;
@@ -113,6 +114,10 @@ case "$choice" in
         # 获取WordPress安装目录
         read -p "请输入WordPress安装目录 [/var/www/html/wordpress]: " wp_dir
         wp_dir=${wp_dir:-/var/www/html/wordpress}
+        if [[ "${wp_dir}" != /* || "${wp_dir}" == "/" || ! -d "${wp_dir}" || ! -f "${wp_dir}/wp-config.php" ]]; then
+            echo -e "${RED}错误: WordPress目录必须是包含 wp-config.php 的绝对路径${NC}"
+            exit 1
+        fi
         
         # 备份WordPress
         if [ -d "$wp_dir" ]; then
@@ -120,7 +125,7 @@ case "$choice" in
         fi
         
         # 删除WordPress目录
-        rm -rf "$wp_dir"
+        rm -rf -- "$wp_dir"
         
         echo -e "${GREEN}WordPress清理完成${NC}"
         echo -e "${YELLOW}注意: 数据库未删除，请手动清理${NC}"
@@ -146,8 +151,8 @@ case "$choice" in
         fi
         
         # 删除残留文件
-        rm -rf /var/lib/docker
-        rm -rf /etc/docker
+        rm -rf -- /var/lib/docker
+        rm -rf -- /etc/docker
         
         echo -e "${GREEN}Docker清理完成${NC}"
         ;;
@@ -172,9 +177,9 @@ case "$choice" in
         fi
         
         # 删除残留文件
-        rm -rf /etc/nginx
-        rm -rf /usr/share/nginx
-        rm -rf /var/www/html
+        rm -rf -- /etc/nginx
+        rm -rf -- /usr/share/nginx
+        rm -rf -- /var/www/html
         
         echo -e "${GREEN}Nginx清理完成${NC}"
         ;;
@@ -199,8 +204,8 @@ case "$choice" in
         fi
         
         # 删除残留文件
-        rm -rf /etc/httpd
-        rm -rf /var/www/html
+        rm -rf -- /etc/httpd
+        rm -rf -- /var/www/html
         
         echo -e "${GREEN}Apache清理完成${NC}"
         ;;
@@ -236,9 +241,9 @@ case "$choice" in
         fi
         
         # 删除残留文件
-        rm -rf /etc/mysql
-        rm -rf /var/lib/mysql
-        rm -rf /var/log/mysql
+        rm -rf -- /etc/mysql
+        rm -rf -- /var/lib/mysql
+        rm -rf -- /var/log/mysql
         
         echo -e "${GREEN}MySQL/MariaDB清理完成${NC}"
         ;;
@@ -263,8 +268,8 @@ case "$choice" in
         fi
         
         # 删除残留文件
-        rm -rf /etc/php
-        rm -rf /var/lib/php
+        rm -rf -- /etc/php
+        rm -rf -- /var/lib/php
         
         echo -e "${GREEN}PHP-FPM清理完成${NC}"
         ;;
@@ -273,14 +278,10 @@ case "$choice" in
         echo -e "${WHITE}清理所有服务...${NC}"
         
         # 执行所有清理操作
-        bash "$0" <<< "1"
-        bash "$0" <<< "2"
-        bash "$0" <<< "3"
-        bash "$0" <<< "4"
-        bash "$0" <<< "5"
-        bash "$0" <<< "6"
-        bash "$0" <<< "7"
-        bash "$0" <<< "8"
+        for service_choice in 1 2 4 5 6 7 8; do
+            printf 'y\n%s\n' "${service_choice}" | bash "$0"
+        done
+        echo -e "${YELLOW}WordPress需要指定目录，未包含在批量清理中${NC}"
         
         echo -e "${GREEN}所有服务清理完成${NC}"
         ;;
@@ -295,4 +296,4 @@ echo ""
 echo -e "${GREEN}服务残留清理完成${NC}"
 echo -e "${WHITE}备份目录: ${YELLOW}$BACKUP_DIR${NC}"
 echo ""
-read -n 1 -s -r -p "按任意键返回主菜单..."
+read -n 1 -s -r -p "按任意键返回主菜单..." || true

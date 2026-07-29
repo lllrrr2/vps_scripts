@@ -1,0 +1,72 @@
+name: ShellCheck
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - '**.sh'
+      - 'version.json'
+      - 'config/vps_scripts.conf'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'VERSIONING.md'
+      - 'RELEASE_CHECKLIST.md'
+      - '.github/workflows/shellcheck.yml'
+  pull_request:
+    branches: [main]
+    paths:
+      - '**.sh'
+      - 'version.json'
+      - 'config/vps_scripts.conf'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'VERSIONING.md'
+      - 'RELEASE_CHECKLIST.md'
+      - '.github/workflows/shellcheck.yml'
+
+jobs:
+  shellcheck:
+    name: ShellCheck lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ShellCheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Run bash -n syntax check on all scripts
+        run: |
+          echo "=== Syntax validation (bash -n) ==="
+          fail=0
+          while IFS= read -r f; do
+            if ! bash -n "$f" 2>&1; then
+              echo "FAIL: $f"
+              fail=1
+            fi
+          done < <(find . -name '*.sh' -not -path './.git/*')
+          [ "$fail" -eq 0 ] && echo "All scripts pass syntax check."
+          exit $fail
+
+      - name: Run ShellCheck on maintained scripts
+        run: |
+          echo "=== ShellCheck ==="
+          shellcheck --severity=error --shell=bash \
+            vps.sh \
+            vps_scripts.sh \
+            lib/common_functions.sh \
+            scripts/system_tools/*.sh \
+            scripts/service_install/*.sh \
+            scripts/network_test/*.sh \
+            scripts/performance_test/*.sh \
+            scripts/other_tools/*.sh \
+            scripts/uninstall_scripts/*.sh
+
+      - name: Run repository validation suite
+        run: |
+          echo "=== Repository validation ==="
+          export REPO_ROOT_OVERRIDE="$PWD"
+          export LAUNCHER_OVERRIDE="$PWD/vps.sh"
+          for test_file in tests/*.sh; do
+            echo "RUN: $test_file"
+            bash "$test_file"
+          done

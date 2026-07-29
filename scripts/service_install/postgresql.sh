@@ -3,7 +3,7 @@
 # 脚本名称: postgresql.sh
 # 脚本描述: PostgreSQL 数据库安装配置脚本 - 支持主从复制、性能优化和扩展管理
 # 脚本路径: vps_scripts/scripts/service_install/postgresql.sh
-# 作者: Jensfrank
+# 作者: everettlabs
 # 使用方法: bash postgresql.sh [选项]
 # 选项说明:
 #   --version <版本>     PostgreSQL版本 (12/13/14/15/16)
@@ -410,6 +410,11 @@ EOF
     
     # 复制配置
     if [[ "$DEPLOY_MODE" == "primary" ]] || [[ "$DEPLOY_MODE" == "standby" ]]; then
+        # 归档目录放在 DATA_DIR 之外，避免单盘故障同时丢失数据和归档
+        local ARCHIVE_DIR="/var/lib/postgresql/archive"
+        mkdir -p "${ARCHIVE_DIR}"
+        chown postgres:postgres "${ARCHIVE_DIR}"
+
         cat >> "$PG_CONFIG_DIR/postgresql.conf" << EOF
 
 # 复制设置
@@ -418,12 +423,8 @@ max_wal_senders = 10
 wal_keep_segments = 64
 hot_standby = on
 archive_mode = on
-archive_command = 'test ! -f ${DATA_DIR}/archive/%f && cp %p ${DATA_DIR}/archive/%f'
+archive_command = 'test ! -f ${ARCHIVE_DIR}/%f && cp %p ${ARCHIVE_DIR}/%f'
 EOF
-
-        # 创建归档目录
-        mkdir -p "${DATA_DIR}/archive"
-        chown postgres:postgres "${DATA_DIR}/archive"
     fi
     
     # 配置pg_hba.conf

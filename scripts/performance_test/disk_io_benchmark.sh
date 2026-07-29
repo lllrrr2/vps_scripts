@@ -1,9 +1,10 @@
 #!/bin/bash
+set -euo pipefail
 
 #==============================================================================
 # 脚本名称: disk_io_benchmark.sh
 # 描述: VPS磁盘IO性能测试脚本 - 测试顺序读写、随机读写、IOPS等
-# 作者: Jensfrank
+# 作者: everettlabs
 # 路径: vps_scripts/scripts/performance_test/disk_io_benchmark.sh
 # 使用方法: bash disk_io_benchmark.sh [选项]
 # 选项: --quick (快速测试) --full (完整测试) --size (测试文件大小GB)
@@ -25,8 +26,8 @@ LOG_DIR="/var/log/vps_scripts"
 LOG_FILE="$LOG_DIR/disk_io_benchmark_$(date +%Y%m%d_%H%M%S).log"
 REPORT_DIR="/var/log/vps_scripts/reports"
 REPORT_FILE="$REPORT_DIR/disk_io_benchmark_$(date +%Y%m%d_%H%M%S).txt"
-TEMP_DIR="/tmp/disk_io_benchmark_$$"
-TEST_DIR="${TEST_PATH:-/tmp}/disk_test_$$"
+TEMP_DIR=$(mktemp -d "/tmp/disk_io_benchmark.XXXXXX") || { echo "Failed to create temp dir"; exit 1; }
+TEST_DIR=$(mktemp -d "${TEST_PATH:-/tmp}/disk_test.XXXXXX") || { echo "Failed to create test dir"; exit 1; }
 
 # 测试模式
 QUICK_MODE=false
@@ -43,16 +44,14 @@ IOPING_COUNT=100  # ioping测试次数
 create_directories() {
     [ ! -d "$LOG_DIR" ] && mkdir -p "$LOG_DIR"
     [ ! -d "$REPORT_DIR" ] && mkdir -p "$REPORT_DIR"
-    [ ! -d "$TEMP_DIR" ] && mkdir -p "$TEMP_DIR"
-    [ ! -d "$TEST_DIR" ] && mkdir -p "$TEST_DIR"
 }
 
 # 清理
 cleanup() {
-    [ -d "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"
-    [ -d "$TEST_DIR" ] && rm -rf "$TEST_DIR"
+    [ -d "${TEMP_DIR:-}" ] && rm -rf -- "$TEMP_DIR"
+    [ -d "${TEST_DIR:-}" ] && rm -rf -- "$TEST_DIR"
     # 清理测试文件
-    rm -f /tmp/test_file_* 2>/dev/null
+    rm -f -- /tmp/test_file_* 2>/dev/null || true
 }
 
 trap cleanup EXIT
@@ -193,7 +192,7 @@ dd_test() {
     fi
     
     # 清理测试文件
-    rm -f "$TEST_DIR/test_write"
+    rm -f -- "$TEST_DIR/test_write"
     
     # 保存结果
     {
@@ -389,7 +388,7 @@ fs_benchmark() {
     
     start_time=$(date +%s.%N)
     
-    rm -f "$TEST_DIR"/small_file_*
+    rm -f -- "$TEST_DIR"/small_file_*
     sync
     
     end_time=$(date +%s.%N)

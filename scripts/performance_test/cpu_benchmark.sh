@@ -1,9 +1,10 @@
 #!/bin/bash
+set -euo pipefail
 
 #==============================================================================
 # 脚本名称: cpu_benchmark.sh
 # 描述: VPS CPU性能基准测试脚本 - 测试单核/多核性能、加密性能、压缩性能等
-# 作者: Jensfrank
+# 作者: everettlabs
 # 路径: vps_scripts/scripts/performance_test/cpu_benchmark.sh
 # 使用方法: bash cpu_benchmark.sh [选项]
 # 选项: --quick (快速测试) --full (完整测试) --stress (压力测试)
@@ -25,7 +26,7 @@ LOG_DIR="/var/log/vps_scripts"
 LOG_FILE="$LOG_DIR/cpu_benchmark_$(date +%Y%m%d_%H%M%S).log"
 REPORT_DIR="/var/log/vps_scripts/reports"
 REPORT_FILE="$REPORT_DIR/cpu_benchmark_$(date +%Y%m%d_%H%M%S).txt"
-TEMP_DIR="/tmp/cpu_benchmark_$$"
+TEMP_DIR=$(mktemp -d "/tmp/cpu_benchmark.XXXXXX") || { echo "Failed to create temp dir"; exit 1; }
 
 # 测试模式
 QUICK_MODE=false
@@ -42,12 +43,11 @@ PRIME_LIMIT=20000    # 素数计算上限
 create_directories() {
     [ ! -d "$LOG_DIR" ] && mkdir -p "$LOG_DIR"
     [ ! -d "$REPORT_DIR" ] && mkdir -p "$REPORT_DIR"
-    [ ! -d "$TEMP_DIR" ] && mkdir -p "$TEMP_DIR"
 }
 
 # 清理
 cleanup() {
-    [ -d "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"
+    [ -d "${TEMP_DIR:-}" ] && rm -rf -- "$TEMP_DIR"
 }
 
 trap cleanup EXIT
@@ -285,14 +285,14 @@ compression_benchmark() {
         echo -e "${GREEN}  $comp 压缩速度: ${compress_speed} MB/s${NC}"
         
         # 清理压缩文件
-        rm -f "$TEMP_DIR/test."* 2>/dev/null
+        rm -f -- "$TEMP_DIR/test."* 2>/dev/null
         
         # 保存结果
         echo "$comp 压缩: ${compress_speed} MB/s" >> "$REPORT_FILE"
     done
     
     # 清理测试文件
-    rm -f "$TEMP_DIR/test_file"
+    rm -f -- "$TEMP_DIR/test_file"
 }
 
 # 整数运算测试

@@ -11,6 +11,14 @@
 - [x] Fix `set -e` preempting pyenv pipeline guard in python.sh
 - [x] Fix `nproc`→`make -j0` (unlimited) in ruby.sh and redis.sh
 
+## P0 (completed safety round)
+
+- [x] Make `bbr.sh` use a project-owned `/etc/sysctl.d/` drop-in and reversible backup
+- [x] Make `swap.sh` idempotent without `swapoff -a` or duplicate `/etc/fstab` entries
+- [x] Preserve existing Fail2ban configuration and support distro-specific SSH logging
+- [x] Validate and escape all Nezha systemd unit inputs
+- [x] Route third-party project installer scripts through isolated download, syntax validation, confirmation, and execution paths
+
 ## P1 (done)
 
 - [x] Review and harden `scripts/service_install/nodejs.sh`
@@ -38,30 +46,56 @@
 - [x] Normalize logging conventions across system_tools modules
 - [x] Optimize module loading speed and slow-network behavior
 - [x] Standardize script headers and encoding (LF, no BOM, `#!/bin/bash`)
-- [x] Classify `update_scripts/` as inactive legacy/reference
+- [x] Remove inactive legacy `update_scripts/` and retain a regression boundary
 - [x] Add Hysteria2 to Proxy Tools menu
 - [x] Add WP Panel to Service Install menu
-- [ ] Add `set -euo pipefail` to remaining 8 service_install scripts (1panel, aapanel, amh, btpanel, cyberpanel, jenkins, ruby, rust)
-- [ ] Refactor `network_test/` category for consistent structure and output
-- [ ] Refactor `performance_test/` category for consistent structure and output
+- [x] Add `set -euo pipefail` to remaining 8 service_install scripts (1panel, aapanel, amh, btpanel, cyberpanel, jenkins, ruby, rust)
+- [x] Refactor `network_test/` category for consistent structure and output
+- [x] Refactor `performance_test/` category for consistent structure and output
+- [x] Add validated arguments to the third-party script wrapper for official installer flags
 - [ ] Add more non-interactive safety flags where appropriate
 
 ## P3 (new)
 
-- [ ] Extract repeated build-from-source pattern into shared helper in `lib/common_functions.sh`
-- [ ] Add `die()` helper function to consolidate 30+ scattered `print_error; exit 1` patterns
-- [ ] Create `scripts/service_install/wppanel.sh` first-party wrapper (currently inline `run_remote_command`)
-- [ ] Add `tests/validate_service_install_strict_mode.sh` to enforce `set -euo pipefail` coverage
-- [ ] Add shellcheck CI or pre-commit hook
-- [ ] Consider moving WAL archive directory outside PostgreSQL DATA_DIR for disaster recovery
+- [x] Remove direct remote shell pipelines from first-party LDNMP, dependency, Jenkins, and bandwidth-test flows
+- [x] Add an upgrade-hardening regression test for launcher, Nezha, LDNMP, and bandwidth-test policies
+- [x] Add LDNMP input, credential-disclosure, and demo-site safety regression coverage
+- [x] Require explicit `--reboot` for non-interactive system-update restarts
+
+## P3 (existing)
+
+- [x] Extract repeated build-from-source pattern into shared helper in `lib/common_functions.sh`
+- [x] Add `die()` helper function to consolidate 30+ scattered `print_error; exit 1` patterns
+- [x] Create `scripts/service_install/wppanel.sh` first-party wrapper (currently inline `run_remote_command`)
+- [x] Add `tests/validate_service_install_strict_mode.sh` to enforce `set -euo pipefail` coverage
+- [x] Add shellcheck CI or pre-commit hook
+- [x] Consider moving WAL archive directory outside PostgreSQL DATA_DIR for disaster recovery
+
+## 1.1.0 release
+
+- [x] Add the first-party modern CLI toolkit with non-interactive flags
+- [x] Add modern CLI and launcher privacy regression tests
+- [x] Enforce synchronized version, release date, changelog, README, and runtime metadata
+- [x] Make ShellCheck errors fail CI
+- [x] Remove the implicit launcher usage-counter request
+- [x] Repair the removed `update_scripts/` validation boundary
+- [x] Synchronize version and launcher style metadata at `1.1.0`
+
+## 1.1.1 release
+
+- [x] Automatically create the managed `vps` command on the first interactive root launch
+- [x] Preserve explicit `8 → 1` and `--install` command installation paths
+- [x] Protect unrelated `/usr/local/bin/vps` commands from automatic overwrite
+- [x] Cover forced, disabled, non-interactive, and collision behavior
+- [x] Synchronize patch-release metadata and user documentation at `1.1.1`
 
 ## Documentation
 
 - [x] Update `CLAUDE.md` with accurate architecture and test commands
-- [x] Update `CHANGELOG.md` with all 2026-06-11 changes
+- [x] Update `CHANGELOG.md` with 1.1.0 changes
 - [x] Refresh `PROGRESS.md` with completed hardening and current phase
 - [x] Update `TASKS.md` (this file)
-- [x] Update `SESSION.md` with 2026-06-11 session summary
+- [x] Retain `SESSION.md` as the historical 2026-06-11 session summary
 - [x] Update `DEVELOPMENT_GUIDE.md` with current patterns and full test suite
 - [x] Update `code_review.md` with current review findings
-- [ ] Keep `README.md` aligned with modular launcher path (review needed)
+- [x] Keep `README.md` aligned with the modular launcher and current inventory

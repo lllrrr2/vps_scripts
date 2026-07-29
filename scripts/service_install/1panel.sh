@@ -1,9 +1,10 @@
 #!/bin/bash
+set -euo pipefail
 #==============================================================================
 # 脚本名称: 1panel.sh
 # 脚本描述: 1Panel官方安装脚本增强版 - 基于官方quick_start.sh
 # 脚本路径: vps_scripts/scripts/service_install/1panel.sh
-# 作者: Jensfrank
+# 作者: everettlabs
 # 使用方法: bash 1panel_official.sh [选项]
 # 选项说明:
 #   --port <端口>         面板端口 (默认: 随机)
@@ -115,8 +116,7 @@ prepare_environment() {
     log "${CYAN}准备安装环境...${NC}"
     
     # 创建临时目录
-    TEMP_DIR="/tmp/1panel_install_$$"
-    mkdir -p "$TEMP_DIR"
+    TEMP_DIR=$(mktemp -d "/tmp/1panel_install.XXXXXX") || { log "${RED}创建临时目录失败${NC}"; exit 1; }
     cd "$TEMP_DIR"
     
     # 设置环境变量
@@ -333,7 +333,7 @@ show_install_info() {
 cleanup() {
     log "${CYAN}清理临时文件...${NC}"
     cd /
-    rm -rf "$TEMP_DIR"
+    rm -rf -- "${TEMP_DIR:-}"
 }
 
 # 主函数

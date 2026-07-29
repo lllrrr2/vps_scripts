@@ -3,7 +3,7 @@
 # 脚本名称: nginx.sh
 # 脚本描述: Nginx Web服务器安装与配置脚本 - 支持多种安装方式和SSL证书配置
 # 脚本路径: vps_scripts/scripts/service_install/nginx.sh
-# 作者: Jensfrank
+# 作者: everettlabs
 # 使用方法: bash nginx.sh [选项]
 # 选项: --stable (稳定版) --mainline (主线版) --source (源码编译)
 # 更新日期: 2025-06-20
@@ -266,7 +266,7 @@ install_nginx_source() {
     # 创建nginx用户和目录
     useradd -r -s /sbin/nologin nginx 2>/dev/null || true
     mkdir -p /var/cache/nginx/{client_temp,proxy_temp,fastcgi_temp,uwsgi_temp,scgi_temp}
-    chown -R nginx:nginx /var/cache/nginx
+    chown -R -- nginx:nginx /var/cache/nginx
     
     # 清理
     cd /
@@ -430,7 +430,7 @@ EOF
 </html>
 EOF
     
-    chown -R nginx:nginx /var/www/html
+    chown -R -- nginx:nginx /var/www/html
 }
 
 # 配置防火墙
@@ -561,7 +561,7 @@ main() {
     # 显示脚本信息
     echo -e "${PURPLE}======================================${NC}"
     echo -e "${PURPLE}Nginx Web服务器安装脚本${NC}"
-    echo -e "${PURPLE}作者: Jensfrank${NC}"
+    echo -e "${PURPLE}作者: everettlabs${NC}"
     echo -e "${PURPLE}版本: 2025-06-20${NC}"
     echo -e "${PURPLE}======================================${NC}"
     echo

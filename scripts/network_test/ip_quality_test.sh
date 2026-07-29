@@ -1,9 +1,10 @@
 #!/bin/bash
+set -euo pipefail
 
 #==============================================================================
 # 脚本名称: ip_quality_test.sh
 # 描述: VPS IP质量测试脚本 - 检测IP黑名单、声誉、类型、风险等级
-# 作者: Jensfrank
+# 作者: everettlabs
 # 路径: vps_scripts/scripts/network_test/ip_quality_test.sh
 # 使用方法: bash ip_quality_test.sh [IP地址]
 # 更新日期: 2024-06-17
@@ -24,7 +25,7 @@ LOG_DIR="/var/log/vps_scripts"
 LOG_FILE="$LOG_DIR/ip_quality_$(date +%Y%m%d_%H%M%S).log"
 REPORT_DIR="/var/log/vps_scripts/reports"
 REPORT_FILE="$REPORT_DIR/ip_quality_$(date +%Y%m%d_%H%M%S).txt"
-TEMP_DIR="/tmp/ip_quality_$$"
+TEMP_DIR=$(mktemp -d "/tmp/ip_quality.XXXXXX") || { echo "Failed to create temp dir"; exit 1; }
 
 # 测试IP（默认使用本机公网IP）
 TARGET_IP=""
@@ -50,12 +51,11 @@ BLACKLIST_SERVERS[truncate]="truncate.gbudb.net"
 create_directories() {
     [ ! -d "$LOG_DIR" ] && mkdir -p "$LOG_DIR"
     [ ! -d "$REPORT_DIR" ] && mkdir -p "$REPORT_DIR"
-    [ ! -d "$TEMP_DIR" ] && mkdir -p "$TEMP_DIR"
 }
 
 # 清理
 cleanup() {
-    [ -d "$TEMP_DIR" ] && rm -rf "$TEMP_DIR"
+    [ -d "${TEMP_DIR:-}" ] && rm -rf -- "$TEMP_DIR"
 }
 
 trap cleanup EXIT

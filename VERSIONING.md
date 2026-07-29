@@ -2,9 +2,9 @@
 
 ## Current State
 
-The repository currently exposes version metadata through `version.json`, with the active project version listed as `1.0.0`.
+The repository currently exposes version metadata through `version.json`, with the active project version listed as `1.1.1`.
 
-The public release history is initialized at `v1.0.0`. Earlier internal development numbers are not part of the public version sequence.
+The public tag history starts at `v1.0.0`. Version `1.1.1` is a backward-compatible patch release for persistent `vps` command startup behavior. Release tags and GitHub Releases are published as explicit release operations.
 
 ## Recommended Policy
 
